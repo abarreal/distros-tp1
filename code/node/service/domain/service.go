@@ -58,7 +58,13 @@ func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
 func (svc *BlockchainService) HandleGetBlock(req *message.GetBlockByHashRequest) (
 	*message.GetBlockByHashResponse, error) {
 	// Simply delegate the request to the blockchain middleware.
-	return svc.blockchain.GetOneWithHash(req)
+	response, err := svc.blockchain.GetOneWithHash(req)
+
+	if err == nil {
+		hash := response.Block().Hash().Hex()
+		logging.Log(fmt.Sprintf("Retrieved block with hash %s", hash))
+	}
+	return response, err
 }
 
 func (svc *BlockchainService) HandleGetBlocksFromMinute(req *message.ReadBlocksInMinuteRequest) (

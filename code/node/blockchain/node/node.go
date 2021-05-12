@@ -159,7 +159,24 @@ func handleGetMiningInfo(blockchain *domain.Blockchain, msg message.Message, con
 }
 
 func handleGetBlockWithHash(blockchain *domain.Blockchain, msg message.Message, conn net.Conn) {
-	// TODO
+	logging.Log("Handling GetBlockByHash request")
+
+	request := msg.(*message.GetBlockByHashRequest)
+	hash := request.Hash()
+
+	logging.Log(fmt.Sprintf("Requested hash: %s", hash.Hex()))
+
+	if block, err := blockchain.GetOneWithHash(hash); err != nil {
+		logging.LogError("Could not retrieve requested block", err)
+	} else {
+		logging.Log(fmt.Sprintf("Block %s found, sending response", block.Hash().Hex()))
+		// Generate response.
+		response := message.CreateGetBlockByHashResponse(block)
+		// Send response back to the client.
+		if err := response.Write(conn); err != nil {
+			logging.LogError("Could not send response", err)
+		}
+	}
 }
 
 func handleGetBlocksInMinute(blockchain *domain.Blockchain, msg message.Message, conn net.Conn) {

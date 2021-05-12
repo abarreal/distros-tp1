@@ -9,7 +9,6 @@ import (
 	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
 	"tp1.aba.distros.fi.uba.ar/node/blockchain/repository"
 
-	"tp1.aba.distros.fi.uba.ar/common/number/big32"
 	number "tp1.aba.distros.fi.uba.ar/common/number/big32"
 )
 
@@ -23,7 +22,7 @@ type Blockchain struct {
 func CreateBlockchain(repo *repository.BlockRepository) *Blockchain {
 	blockchain := &Blockchain{}
 	blockchain.repository = repo
-	// When booting up, set the current difficulty equal to the
+	// When booting up, set the current difficulty to be equal to the
 	// difficulty of the block last written, and set the write time
 	// to be now.
 	blockchain.currentDifficulty = repo.PreviousBlockDifficulty()
@@ -56,10 +55,10 @@ func (blockchain *Blockchain) WriteBlock(block *blockchain.Block) error {
 	// to the expected value, possibly in the save method.
 
 	// Try writing the block to the storage.
-	var newDifficulty *big32.Big32 = nil
+	var newDifficulty *number.Big32 = nil
 	writeTime := time.Now().UTC()
 
-	computeDifficulty := func() *big32.Big32 {
+	computeDifficulty := func() *number.Big32 {
 		// The block has been accepted, so we mark the successful write attempt
 		// and recompute difficulty.
 		deltaSeconds := int64(writeTime.Sub(blockchain.lastWrite).Seconds())

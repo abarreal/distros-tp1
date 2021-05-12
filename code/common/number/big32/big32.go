@@ -33,6 +33,11 @@ func FromBytes(source *[32]byte) *Big32 {
 	return b
 }
 
+func FromHexString(hash string) *Big32 {
+	data, _ := hex.DecodeString(hash)
+	return FromSlice(data)
+}
+
 func FromBig(b *big.Int) *Big32 {
 	if b.Cmp(big.NewInt(0)) == 0 {
 		return Zero

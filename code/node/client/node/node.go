@@ -7,6 +7,7 @@ import (
 
 	"tp1.aba.distros.fi.uba.ar/common/config"
 	"tp1.aba.distros.fi.uba.ar/common/logging"
+	"tp1.aba.distros.fi.uba.ar/common/number/big32"
 	"tp1.aba.distros.fi.uba.ar/interface/message"
 )
 
@@ -45,7 +46,7 @@ func handleWrite() {
 	response, err := send(request)
 
 	if err != nil {
-		fmt.Println("There was an error while processing your request")
+		logging.LogError("Chunk could not be written", err)
 	}
 
 	r := response.(*message.WriteChunkResponse)
@@ -56,7 +57,34 @@ func handleWrite() {
 }
 
 func handleBlockRequest() {
-	// TODO
+	// Get the hash of the block being requested, as an hex string.
+	// Then instantiate a Big32 from the hash.
+	hashx := os.Args[2]
+	hash := big32.FromHexString(hashx)
+	// Instantiate a query request from the hash.
+	request := message.CreateGetBlockByHashRequest(hash)
+
+	logging.Log(fmt.Sprintf("Sending block request: %s", hashx))
+	if response, err := send(request); err != nil {
+		logging.LogError("Could not retrieve block", err)
+	} else {
+		r := response.(*message.GetBlockByHashResponse)
+
+		if r.Found() {
+			block := r.Block()
+			logging.Log(fmt.Sprintf("Retrieved block %s", block.Hash().Hex()))
+
+			for it := block.Entries(); it.HasNext(); it.Advance() {
+				chunk := it.Chunk()
+				logging.Log(fmt.Sprintf("Found entry: %s", string(chunk.Data)))
+			}
+
+			// TODO: Write all block entries.
+
+		} else {
+			logging.Log("Block could not be found")
+		}
+	}
 }
 
 func handleBlocksInMinuteRequest() {

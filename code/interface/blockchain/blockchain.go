@@ -171,9 +171,9 @@ func (block *Block) Buffer() []byte {
 
 func (block *Block) BufferWithMetadata() []byte {
 	// Instantiate a buffer object.
-	buffer := bytes.NewBuffer(make([]byte, block.LenghtWithMetadata()))
+	buffer := bytes.NewBuffer(make([]byte, 0, block.LenghtWithMetadata()))
 	// Write the block to the buffer and return.
-	block.Write(buffer)
+	block.WriteWithMetadata(buffer)
 	return buffer.Bytes()
 }
 
