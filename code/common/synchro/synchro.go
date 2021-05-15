@@ -16,15 +16,30 @@ type FileLock = sync.Mutex
 var filelocksMutex sync.RWMutex = sync.RWMutex{}
 var filelocks map[string]*FileLock = make(map[string]*FileLock)
 
+func HandleFileAtomically(filepath string, flags int, callback func(file *os.File) error) error {
+	return HandleFileAtomicallyIfFound(filepath, flags, callback, nil)
+}
+
 // Open the file in the given path and call the callback, atomically. The file is created
 // it it does not exist.
-func HandleFileAtomically(filepath string, flags int, callback func(file *os.File) error) error {
+func HandleFileAtomicallyIfFound(
+	filepath string,
+	flags int,
+	callback func(file *os.File) error,
+	notFoundCallback func() error) error {
+
 	// Get a lock on the file.
 	lock := getFileLock(filepath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	// Open the file, or create it if it does not exist.
+	// Check if the file exists. Have the case handled if not found.
+	if notFoundCallback != nil {
+		if _, err := os.Stat(filepath); os.IsNotExist(err) {
+			return notFoundCallback()
+		}
+	}
+
 	file, err := os.OpenFile(filepath, flags, 0600)
 
 	if err != nil {

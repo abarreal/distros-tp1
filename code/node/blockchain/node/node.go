@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"tp1.aba.distros.fi.uba.ar/common/config"
 	"tp1.aba.distros.fi.uba.ar/common/logging"
@@ -100,6 +101,7 @@ func handleWriteConnection(blockchain *domain.Blockchain, conn *net.Conn) {
 	logging.Log(fmt.Sprintf("Block hash: %s", block.Hash().Hex()))
 	logging.Log(fmt.Sprintf("Block previous hash: %s", block.PreviousHash().Hex()))
 	logging.Log(fmt.Sprintf("Block difficulty: %s", block.Difficulty().Hex()))
+	logging.Log(fmt.Sprintf("Block timestamp: %d", block.Timestamp()))
 
 	logging.Log("Attempting to write block to the blockchain")
 	err = blockchain.WriteBlock(block)
@@ -180,5 +182,27 @@ func handleGetBlockWithHash(blockchain *domain.Blockchain, msg message.Message, 
 }
 
 func handleGetBlocksInMinute(blockchain *domain.Blockchain, msg message.Message, conn net.Conn) {
-	// TODO
+	logging.Log("Handling ReadBlocksInMinute request")
+
+	request := msg.(*message.ReadBlocksInMinuteRequest)
+
+	requestedTimestamp := request.Timestamp()
+	requestedTime := time.Unix(requestedTimestamp, 0).UTC()
+
+	logging.Log(fmt.Sprintf("Requested timestamp: %d", requestedTimestamp))
+
+	if blocks, err := blockchain.GetBlocksFromMinute(requestedTime); err != nil {
+		logging.LogError("Could not retrieve list of blocks", err)
+	} else {
+		logging.Log(fmt.Sprintf("Found %d blocks", len(blocks)))
+		// Generate the response.
+		response, err := message.CreateReadBlocksInMinuteResponse(requestedTimestamp, blocks)
+
+		if err != nil {
+			logging.LogError("Could not create response", err)
+		}
+		if err := response.Write(conn); err != nil {
+			logging.LogError("Could not send response", err)
+		}
+	}
 }

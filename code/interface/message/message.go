@@ -304,6 +304,7 @@ func handleReadBlocksInMinute(opcode uint8, reader io.Reader) (Message, error) {
 		return nil, err
 	}
 	rbim := &ReadBlocksInMinuteRequest{}
+	rbim.opcode = opcode
 	rbim.datalen = uint64(len(timestamp))
 	rbim.data = timestamp
 	return rbim, nil

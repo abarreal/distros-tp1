@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
+	"time"
 
 	"tp1.aba.distros.fi.uba.ar/common/config"
 	"tp1.aba.distros.fi.uba.ar/common/logging"
@@ -79,8 +81,6 @@ func handleBlockRequest() {
 				logging.Log(fmt.Sprintf("Found entry: %s", string(chunk.Data)))
 			}
 
-			// TODO: Write all block entries.
-
 		} else {
 			logging.Log("Block could not be found")
 		}
@@ -88,7 +88,46 @@ func handleBlockRequest() {
 }
 
 func handleBlocksInMinuteRequest() {
-	// TODO
+	// Get the UNIX timestamp from the first argument.
+	requestDatetime, timestampInt, err := parseTimestamp(os.Args[2])
+
+	if err != nil {
+		logging.LogError("Could not parse timestamp", err)
+	}
+
+	// Instantiate a query request.
+	minuteString := requestDatetime.Format("2006-01-02 15:04")
+	request := message.CreateReadBlocksInMinute(timestampInt)
+
+	logging.Log(fmt.Sprintf("Sending query for blocks in minute: %s", minuteString))
+
+	if response, err := send(request); err != nil {
+		logging.LogError("The request could not be processed", err)
+	} else {
+		r := response.(*message.ReadBlocksInMinuteResponse)
+		// Notify the amount of blocks found.
+		minuteString := time.Unix(r.Timestamp(), 0)
+		logging.Log(fmt.Sprintf("Found %d blocks for minute %s", r.BlockCount(), minuteString))
+		// Iterate through blocks and write content.
+		blocks := r.Blocks()
+
+		for i := 0; i < int(r.BlockCount()); i++ {
+			currentBlock := blocks[i]
+			logging.Log(fmt.Sprintf("Found block %s", currentBlock.Hash().Hex()))
+			for it := currentBlock.Entries(); it.HasNext(); it.Advance() {
+				chunk := it.Chunk()
+				logging.Log(fmt.Sprintf("Found entry: %s", string(chunk.Data)))
+			}
+		}
+	}
+}
+
+func parseTimestamp(unixTimestamp string) (time.Time, int64, error) {
+	if timestampInt, err := strconv.ParseInt(unixTimestamp, 10, 64); err != nil {
+		return time.Now(), 0, err
+	} else {
+		return time.Unix(timestampInt, 0), timestampInt, err
+	}
 }
 
 func send(request message.Message) (message.Message, error) {

@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"tp1.aba.distros.fi.uba.ar/common/logging"
 )
 
 //=================================================================================================
@@ -191,8 +193,7 @@ func (acc *acceptor) run() {
 					return
 				} else {
 					// There was an actual error.
-					// TODO: Log error.
-					fmt.Println("Error")
+					logging.LogError("Connection error", err)
 				}
 			}
 

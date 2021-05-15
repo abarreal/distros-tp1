@@ -185,8 +185,7 @@ func (repo *BlockRepository) GetBlocksFromMinute(t time.Time) ([]*blockchain.Blo
 	// Instantiate a slice to hold blocks.
 	blocks := make([]*blockchain.Block, 0)
 	// Read the file and get all blocks that fall in the specific minute from the timestamp.
-	err := synchro.HandleFileAtomically(filepath, os.O_RDONLY, func(file *os.File) error {
-
+	err := synchro.HandleFileAtomicallyIfFound(filepath, os.O_RDONLY, func(file *os.File) error {
 		// Define an error object to iterate through file blocks.
 		var currentError error = nil
 		// Define a block pointer.
@@ -224,7 +223,14 @@ func (repo *BlockRepository) GetBlocksFromMinute(t time.Time) ([]*blockchain.Blo
 		}
 
 		return nil
-	})
+	},
+		// Define the function that will handle the case in which the file is not found.
+		func() error {
+			logging.Log(fmt.Sprintf("File %s not found", filepath))
+			logging.Log("There is no file holding blocks in the given minute")
+			return nil // Just leave the block list empty.
+		})
+
 	if err != nil {
 		return nil, err
 	}
@@ -417,13 +423,16 @@ func getFilename(block *blockchain.Block) string {
 }
 
 func getFilenameForTime(time time.Time) string {
+	// Convert to UTC.
+	time = time.UTC()
 	// Get the date.
 	year, month, day := time.Date()
 	// Get hour and minutes to partition storage by that.
 	h := time.Hour()
 	m := time.Minute()
 	// Construct the name of the file.
-	return fmt.Sprintf("blockchain-%d-%d-%d-%d-%d", year, month, day, h, m)
+	filename := fmt.Sprintf("blockchain-%d-%d-%d-%d-%d", year, month, day, h, m)
+	return filename
 }
 
 func (repo *BlockRepository) getIndexPath(block *blockchain.Block) string {

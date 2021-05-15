@@ -94,8 +94,11 @@ func (b *Blockchain) GetBlocksFromMinute(req *message.ReadBlocksInMinuteRequest)
 		return nil, err
 	} else {
 		defer conn.Close()
-		res, err := b.delegate(req, conn)
-		return res.(*message.ReadBlocksInMinuteResponse), err
+		if res, err := b.delegate(req, conn); err != nil {
+			return nil, err
+		} else {
+			return res.(*message.ReadBlocksInMinuteResponse), nil
+		}
 	}
 }
 
