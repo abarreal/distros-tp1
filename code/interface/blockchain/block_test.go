@@ -117,6 +117,33 @@ func testEntryContents(block *Block, t *testing.T) {
 	}
 }
 
+func TestHashAttempt(t *testing.T) {
+	block := testBlock(t)
+
+	// Set block difficulty to 1.
+	block.setDifficulty(b32.One)
+	// Attempt hashing and expect result to be true.
+	found := block.AttemptHash()
+
+	if !found {
+		t.Fatal("Unexpected hash attempt result for easy difficulty")
+	}
+
+	// Attempt hashing with a large difficulty.
+	large := make([]byte, 32)
+
+	for i := 0; i < len(large); i++ {
+		large[i] = 0xff
+	}
+
+	block.setDifficulty(b32.FromSlice(large))
+	found = block.AttemptHash()
+
+	if found {
+		t.Fatal("Unexpected hash attempt result for hard difficulty")
+	}
+}
+
 func random32() *b32.Big32 {
 	buff := make([]byte, 32)
 	rand.Read(buff)

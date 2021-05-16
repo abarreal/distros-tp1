@@ -5,112 +5,179 @@ import (
 	"sync"
 
 	"tp1.aba.distros.fi.uba.ar/common/config"
+	"tp1.aba.distros.fi.uba.ar/common/logging"
 	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
+	"tp1.aba.distros.fi.uba.ar/interface/message"
+	"tp1.aba.distros.fi.uba.ar/node/service/middleware"
 )
 
 const BlockWriterOpQuit int = 0
 
+const BlockWriterStateBooting = 0
+const BlockWriterStateWaitingForBlock = 1
+const BlockWriterStateWaitingForMiners = 2
+
 type BlockWriter struct {
-	// The write group for the writer to register to when starting.
-	waitGroup *sync.WaitGroup
-	// The amount of miners managed by this writer.
-	minerCount int
-	// A slice of miners managed by this writer.
-	miners []*Miner
-	// The channel through which blocks to be written will be sent to the writer.
-	writeChannel chan *blockchain.Block
-	// The channel through which control signals will be sent to the writer.
-	controlChannel chan int
-	// The channel through which miners will send mined blocks back to the writer.
-	currentResponseChannel chan *blockchain.Block
-	// A flag to keep track of whether the server is stopping.
 	stopping bool
+	state    int
+
+	// The blockchain middleware to delegate write requests.
+	blockchain *middleware.Blockchain
+	// A queue through which the writer receives blocks for writing.
+	inputQueue <-chan *blockchain.Block
+	// A queue through which the writer will send writer responses.
+	responseQueue chan<- *message.WriteBlockResponse
+	// A channel used to tell the writer to stop.
+	quitChannel chan int
+	// A wait group for the writer to register to.
+	waitGroup *sync.WaitGroup
+	// A wait group for the miners to register to.
+	minerWaitGroup *sync.WaitGroup
+	// The currently outstanding mining request.
+	currentMiningRequest *MiningRequest
+	// The collection of miners under this writer.
+	miners []*Miner
 }
 
-func CreateBlockWriter(wg *sync.WaitGroup) *BlockWriter {
-	wr := &BlockWriter{}
-	wr.waitGroup = wg
-	wr.stopping = false
+func CreateBlockWriter(
+	blockchain *middleware.Blockchain,
+	inputQueue <-chan *blockchain.Block,
+	responseQueue chan<- *message.WriteBlockResponse) *BlockWriter {
 
-	// Instantiate miners.
-	wr.minerCount, _ = config.GetIntOrDefault("MinerCount", 4)
-	wr.miners = make([]*Miner, wr.minerCount)
+	writer := &BlockWriter{}
+	writer.blockchain = blockchain
+	writer.inputQueue = inputQueue
+	writer.responseQueue = responseQueue
+	writer.state = BlockWriterStateBooting
+	writer.currentMiningRequest = nil
+	writer.stopping = false
+	writer.quitChannel = make(chan int)
 
-	for i := 0; i < len(wr.miners); i++ {
-		wr.miners[i] = CreateMiner(wg)
+	// Create miners.
+	minerCount, _ := config.GetIntOrDefault("MinerCount", 4)
+	writer.miners = make([]*Miner, minerCount)
+	writer.minerWaitGroup = &sync.WaitGroup{}
+
+	for i := 0; i < len(writer.miners); i++ {
+		writer.miners[i] = CreateMiner(i)
+		writer.miners[i].RegisterOnWaitGroup(writer.minerWaitGroup)
 	}
 
-	return wr
+	return writer
+}
+
+func (writer *BlockWriter) RegisterOnWaitGroup(waitGroup *sync.WaitGroup) {
+	writer.waitGroup = waitGroup
+	writer.waitGroup.Add(1)
+}
+
+func (writer *BlockWriter) Stop() {
+	logging.Log("Sending stop signal to the block writer")
+	writer.quitChannel <- 1
 }
 
 func (writer *BlockWriter) Run() {
-	writer.waitGroup.Add(1)
-
-	// Launch miners one by one.
-	for _, miner := range writer.miners {
-		go miner.Run()
+	// Run miners.
+	for i := 0; i < len(writer.miners); i++ {
+		go writer.miners[i].Run()
 	}
 
+	// Initiate main loop.
 	for !writer.stopping {
 		writer.loop()
 	}
 
-	// Stop all miners.
-	for _, miner := range writer.miners {
-		miner.Quit()
-	}
+	logging.Log("Block writer now stopping")
 
-	writer.waitGroup.Done()
+	// Stop miners.
+	for i := 0; i < len(writer.miners); i++ {
+		logging.Log(fmt.Sprintf("Sending stop request to miner %d", i))
+		writer.miners[i].Stop()
+	}
+	// Wait for miners to finish.
+	logging.Log("Waiting for miners to finish")
+	writer.minerWaitGroup.Wait()
+	// Send notification of writer termination.
+	if writer.waitGroup != nil {
+		writer.waitGroup.Done()
+	}
 }
 
-func (writer *BlockWriter) loop() {
-	// The writer can receive messages from three sources: from the source that
-	// creates blocks for writing, from the miners, and through the control channel.
+func (wr *BlockWriter) loop() {
+	// Proceed depending on current state.
+	switch wr.state {
+	case BlockWriterStateBooting:
+		wr.boot()
+	case BlockWriterStateWaitingForBlock:
+		wr.awaitBlock()
+	case BlockWriterStateWaitingForMiners:
+		wr.awaitMiners()
+	}
+}
+
+func (wr *BlockWriter) boot() {
+	// Send a message through the response queue to notify about the writer being ready to
+	// handle incoming blocks.
+	h := wr.blockchain.CurrentPreviousHash()
+	d := wr.blockchain.CurrentDifficulty()
+	wr.responseQueue <- message.CreateWriteBlockResponse(true, h, d)
+	wr.state = BlockWriterStateWaitingForBlock
+}
+
+func (wr *BlockWriter) awaitBlock() {
+	logging.Log("Block writer now waiting for a new block")
 	select {
-	case signal := <-writer.controlChannel:
-		// Handle incoming control signal.
-		writer.handle(signal)
-	case block := <-writer.writeChannel:
-		// Handle incoming block for writing.
-		writer.handleBlockForMining(block)
-	case block := <-writer.currentResponseChannel:
-		// Handle mined block coming from miners.
-		writer.handleMinedBlock(block)
+	case block := <-wr.inputQueue:
+		wr.handleIncomingBlock(block)
+	case <-wr.quitChannel:
+		wr.finalize()
 	}
 }
 
-func (writer *BlockWriter) handle(signal int) {
-	switch signal {
-	case BlockWriterOpQuit:
-		writer.stopping = true
+func (wr *BlockWriter) handleIncomingBlock(block *blockchain.Block) {
+	logging.Log("Block writer now handling an incoming block")
+	// Create a channel for the miners to answer through.
+	channel := make(chan *blockchain.Block, len(wr.miners))
+	// Create a mining request and send to each miner for mining.
+	wr.currentMiningRequest = CreateMiningRequest(block, channel)
+	// Send the request to the miners.
+	logging.Log("Pushing mining request to the miners")
+	for _, miner := range wr.miners {
+		miner.StartMining(wr.currentMiningRequest)
+	}
+	// Change writer state.
+	wr.state = BlockWriterStateWaitingForMiners
+}
+
+func (wr *BlockWriter) awaitMiners() {
+	logging.Log("Block writer now waiting for the miners to finish mining the current block")
+	select {
+	case block := <-wr.currentMiningRequest.ResponseChannel():
+		wr.handleMiningResponse(block)
+	case <-wr.quitChannel:
+		wr.finalize()
 	}
 }
 
-func (writer *BlockWriter) handleBlockForMining(block *blockchain.Block) {
-	// We received a new block for mining. Create a mining request for the block.
-	// Create a channel in which to receive the responses from the miners fist,
-	// and make it as to hold responses from all workers so that they do not block.
-	writer.currentResponseChannel = make(chan *blockchain.Block, writer.minerCount)
-	request := CreateMiningRequest(block, writer.currentResponseChannel)
-	// Send the request to each miner for them to start mining the block.
-	for _, miner := range writer.miners {
-		miner.StartMining(request)
+func (wr *BlockWriter) handleMiningResponse(block *blockchain.Block) {
+	logging.Log("Block writer now handling a response from the miners")
+	// Send the mined block to the blockchain server. Create a write request first.
+	blockRequest := message.CreateWriteBlock(block)
+	// Send the request to the server.
+	if blockResponse, err := wr.blockchain.WriteBlock(blockRequest); err != nil {
+		logging.LogError("Write request failed", err)
+	} else {
+		// Notify all remaining miners that mining for the current block is done and they should stop.
+		for _, miner := range wr.miners {
+			miner.StopMining()
+		}
+		// Send the response back upstream to notify results and change state.
+		wr.responseQueue <- blockResponse
+		wr.state = BlockWriterStateWaitingForBlock
 	}
 }
 
-func (writer *BlockWriter) handleMinedBlock(block *blockchain.Block) {
-	// We received a mined block from the miners.
-	// Send the write request to the blockchain.
-	// TODO
-	fmt.Printf("DEBUG: HANDLING MINED BLOCK WITH HASH %s\n", block.Hash().Hex())
-
-	// Stop the remaining miners from mining the block, until we send
-	// them a new request.
-	for _, miner := range writer.miners {
-		miner.StopMining()
-	}
-}
-
-func (writer *BlockWriter) Quit() {
-	writer.controlChannel <- BlockWriterOpQuit
+func (wr *BlockWriter) finalize() {
+	logging.Log("Block writer received stop signal")
+	wr.stopping = true
 }

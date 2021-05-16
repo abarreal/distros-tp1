@@ -24,17 +24,14 @@ func CreateBlockchainService() (*BlockchainService, error) {
 	svc.stopping = false
 	svc.waitGroup = nil
 	svc.controlChannel = make(chan int)
-
 	// Instantiate blockchain middleware.
 	if blockchain, err := middleware.CreateBlockchain(); err != nil {
 		return nil, err
 	} else {
 		svc.blockchain = blockchain
 	}
-
 	// Instantiate an input queue to hold incoming write requests.
 	svc.inputQueue = CreateChunkQueue()
-
 	return svc, nil
 }
 
@@ -55,13 +52,20 @@ func (svc *BlockchainService) RegisterOnWaitGroup(wg *sync.WaitGroup) error {
 func (svc *BlockchainService) Run() {
 	logging.Log("Blockchain service starting")
 
+	// Create a wait group for subservices.
+	svcGroup := &sync.WaitGroup{}
+
 	// Run packer.
 	logging.Log("Starting block packer")
-	// TODO
+	packer := CreateBlockPacker(svc.inputQueue)
+	packer.RegisterOnWaitGroup(svcGroup)
+	go packer.Run()
 
 	// Run writer.
 	logging.Log("Starting block writer")
-	// TODO
+	writer := CreateBlockWriter(svc.blockchain, packer.BlockQueue(), packer.ResponseChannel())
+	writer.RegisterOnWaitGroup(svcGroup)
+	go writer.Run()
 
 	// Begin main loop.
 	svc.stopping = false
@@ -73,15 +77,12 @@ func (svc *BlockchainService) Run() {
 		svc.stopping = true
 	}
 
-	// Stop and wait for packer.
-	logging.Log("Stopping packer")
-	// TODO
-
-	// Stop and wait for writer.
-	logging.Log("Stopping writer")
-	// TODO
-
-	// Terminate.
+	// Stop and wait for subservices.
+	packer.Stop()
+	writer.Stop()
+	// Wait for subservices to finish.
+	svcGroup.Wait()
+	// Indicate termination if part of a wait group.
 	if svc.waitGroup != nil {
 		svc.waitGroup.Done()
 	}
@@ -125,37 +126,3 @@ func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
 	// Push the request through the input queue.
 	return svc.inputQueue.PushRequest(req), nil
 }
-
-/*
-func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
-	*message.WriteChunkResponse, error) {
-	// TODO: Store the chunk for writing later. Have a goroutine in the background periodically
-	// reading cached chunks and constructing blocks from them. Delegate those blocks to the
-	// miners to find a good nonce.
-
-	// For the moment just construct a block from the chunk and send.
-	chunk := blockchain.CreateChunk(req.ChunkData())
-
-	// Get previous hash and difficulty from the blockchain. They will be used to
-	// instantiate the new block.
-	previousHash, difficulty := svc.blockchain.CurrentPreviousHash(), svc.blockchain.CurrentDifficulty()
-
-	if block, err := blockchain.CreateBlock(previousHash, difficulty, chunk); err != nil {
-		return nil, err
-	} else {
-
-		logging.Log("Created block for request")
-		logging.Log(fmt.Sprintf("Created block's hash: %s", block.Hash().Hex()))
-		logging.Log(fmt.Sprintf("Created block's previous hash: %s", block.PreviousHash().Hex()))
-		logging.Log(fmt.Sprintf("Created block's difficulty: %s", block.Difficulty().Hex()))
-
-		blockRequest := message.CreateWriteBlock(block)
-		if blockResponse, err := svc.blockchain.WriteBlock(blockRequest); err != nil {
-			return nil, err
-		} else {
-			return message.CreateWriteChunkResponse(blockResponse.Ok()), nil
-		}
-	}
-
-}
-*/

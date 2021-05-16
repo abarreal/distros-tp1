@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -345,6 +346,17 @@ func (block *Block) setBig32(field string, n *b32.Big32) {
 
 func getFieldPositionInfo(name string) (uint32, uint32) {
 	return headerOffset[name], headerLength[name]
+}
+
+func (block *Block) AttemptHash() bool {
+	block.GenerateNonce()
+	hash := block.Hash()
+	difficulty := block.Difficulty()
+	// Compute the hash and evaluate whether it meets the difficulty requirements.
+	// Compute the expected maximum hash value first.
+	numerator := new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
+	max := new(big.Int).Div(numerator, difficulty.ToBig())
+	return max.Cmp(hash.ToBig()) > 0
 }
 
 //=================================================================================================

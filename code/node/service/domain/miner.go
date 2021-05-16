@@ -1,9 +1,10 @@
 package domain
 
 import (
-	"math/big"
+	"fmt"
 	"sync"
 
+	"tp1.aba.distros.fi.uba.ar/common/logging"
 	"tp1.aba.distros.fi.uba.ar/common/number/big32"
 	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
 )
@@ -16,128 +17,148 @@ type MiningRequest struct {
 	// The block to mine.
 	block *blockchain.Block
 	// The channel to which the result should be written.
-	responseChannel chan<- *blockchain.Block
+	responseChannel chan *blockchain.Block
 }
 
 // Given a block, create a request for the miners to mine that block. Once mined, the complete
 // block with nonce and hash will be written to the given output channel. To prevent issues,
 // the output channel should be non blocking.
-func CreateMiningRequest(block *blockchain.Block, output chan<- *blockchain.Block) *MiningRequest {
+func CreateMiningRequest(block *blockchain.Block, output chan *blockchain.Block) *MiningRequest {
 	request := &MiningRequest{}
 	request.block = block
 	request.responseChannel = output
 	return request
 }
 
+func (request *MiningRequest) ResponseChannel() <-chan *blockchain.Block {
+	return request.responseChannel
+}
+
 //=================================================================================================
 // Miner
 //-------------------------------------------------------------------------------------------------
 
-// Define control signal constants for the miner.
 const MinerOpQuit int = 0
-const MinerOpStartMining int = 1
-const MinerOpStopMining int = 2
+const MinerOpStopMining int = 1
+
+const MinerStateIdle int = 0
+const MinerStateMining int = 1
 
 type Miner struct {
-	// The wait group for the miner to join when starting.
-	waitGroup *sync.WaitGroup
-	// The request currently being handled by the miner.
-	currentRequest *MiningRequest
-	// The channel through which the miner will receive control signals.
+	id             int
+	stopping       bool
+	state          int
+	waitGroup      *sync.WaitGroup
 	controlChannel chan int
-	// The channel through which the miner will receive mining requests.
 	requestChannel chan *MiningRequest
-	// A flag that indicates whether the miner should be stopping or not.
-	stopping bool
+	currentRequest *MiningRequest
 }
 
-func CreateMiner(wg *sync.WaitGroup) *Miner {
+func CreateMiner(id int) *Miner {
 	miner := &Miner{}
-	miner.waitGroup = wg
-	miner.currentRequest = nil
+	miner.id = id
+	miner.state = MinerStateIdle
 	miner.stopping = false
+	miner.controlChannel = make(chan int)
+	miner.requestChannel = make(chan *MiningRequest)
+	miner.currentRequest = nil
 	return miner
 }
 
-func (miner *Miner) Run() {
+func (miner *Miner) RegisterOnWaitGroup(waitGroup *sync.WaitGroup) {
+	miner.waitGroup = waitGroup
 	miner.waitGroup.Add(1)
+}
 
+func (miner *Miner) Run() {
+	// Begin main loop.
 	for !miner.stopping {
 		miner.loop()
 	}
-
-	miner.waitGroup.Done()
-}
-
-func (miner *Miner) loop() {
-	// If there is a non null mining request, then the miner is currently mining.
-	mining := miner.currentRequest == nil
-
-	if mining {
-		// We have some mining task, currently. Before proceeding, we check if there
-		// is some control signal we should care about.
-		select {
-		case signal := <-miner.controlChannel:
-			// Handle the signal and continue in the following cycle.
-			miner.handle(signal)
-			return
-		default:
-		}
-		// There were no signals to be handled, so we perform the mining work.
-		currentBlock := miner.currentRequest.block
-		currentBlock.GenerateNonce()
-		currentBlock.UpdateTimestamp()
-		hash := currentBlock.Hash()
-		difficulty := currentBlock.Difficulty()
-		// Compute the hash and evaluate whether it meets the difficulty requirements.
-		// Compute the expected maximum hash value first.
-		numerator := new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil)
-		max := new(big.Int).Div(numerator, difficulty.ToBig())
-		// Determine whether the current hash value is less than the computed value.
-		if max.Cmp(hash.ToBig()) > 0 {
-			// The hash is less than the maximum value, so we take this as a valid block.
-			// Send the block with the nonce through the response channel.
-			miner.currentRequest.responseChannel <- miner.currentRequest.block
-			miner.currentRequest = nil
-		}
-	} else {
-		// We are not currently mining. We proceed then to lock and wait for
-		// a new control signal.
-		signal := <-miner.controlChannel
-		miner.handle(signal)
-	}
-}
-
-func (miner *Miner) handle(signal int) {
-	switch signal {
-	case MinerOpQuit:
-		miner.stopping = true
-	case MinerOpStopMining:
-		// Set current mining request to nil to indicate that there is nothing to mine.
-		miner.currentRequest = nil
-	case MinerOpStartMining:
-		// We were asked to start mining. Read the mining request from the channel.
-		request := <-miner.requestChannel
-		// Replace the current block with a mutable copy.
-		request.block = blockchain.CreateBlockFromBuffer(
-			big32.Zero,
-			request.block.Buffer(),
-			request.block.DataLength())
-		// Set the request on the miner to begin mining in the following loop.
-		miner.currentRequest = request
+	// Begin finalization procedures.
+	logging.Log(fmt.Sprintf("Miner %d now stopping", miner.id))
+	if miner.waitGroup != nil {
+		miner.waitGroup.Done()
 	}
 }
 
 func (miner *Miner) StartMining(request *MiningRequest) {
-	miner.StopMining()
 	miner.requestChannel <- request
-	miner.controlChannel <- MinerOpStartMining
 }
 
 func (miner *Miner) StopMining() {
 	miner.controlChannel <- MinerOpStopMining
 }
 
-func (miner *Miner) Quit() {
+func (miner *Miner) Stop() {
+	logging.Log(fmt.Sprintf("Sending quit signal to miner %d", miner.id))
 	miner.controlChannel <- MinerOpQuit
+}
+
+func (miner *Miner) loop() {
+	// Act depending on miner state.
+	switch miner.state {
+	case MinerStateIdle:
+		miner.awaitMiningRequest()
+	case MinerStateMining:
+		miner.mine()
+	}
+}
+
+func (miner *Miner) awaitMiningRequest() {
+	logging.Log(fmt.Sprintf("Miner %d waiting for mining request", miner.id))
+
+	select {
+	case request := <-miner.requestChannel:
+		miner.handleMiningRequest(request)
+	case signal := <-miner.controlChannel:
+		miner.handleSignal(signal)
+	}
+}
+
+func (miner *Miner) handleMiningRequest(request *MiningRequest) {
+	logging.Log(fmt.Sprintf("Miner %d received a mining request", miner.id))
+	// Create a mutable copy of the block.
+	block := blockchain.CreateBlockFromBuffer(
+		big32.Zero,
+		request.block.Buffer(),
+		request.block.DataLength())
+	// Create a copy of the request, with the mutable copy of the block.
+	// Set request for mining and transition to the mining state.
+	miner.currentRequest = CreateMiningRequest(block, request.responseChannel)
+	miner.state = MinerStateMining
+}
+
+func (miner *Miner) handleSignal(signal int) {
+	switch signal {
+	case MinerOpQuit:
+		miner.stopping = true
+	case MinerOpStopMining:
+		miner.currentRequest = nil
+		miner.state = MinerStateIdle
+	}
+}
+
+func (miner *Miner) mine() {
+	// Check if there are signals to be handled.
+	select {
+	case signal := <-miner.controlChannel:
+		miner.handleSignal(signal)
+		return
+	default:
+		// There are no signals to be handled. Continue with the code
+		// that follows.
+	}
+	// Get the current block and update values to generate a new hash.
+	currentBlock := miner.currentRequest.block
+	// Determine whether the current hash value is less than the computed value.
+	if currentBlock.AttemptHash() {
+		// The hash is less than the maximum value, so we take this as a valid block.
+		// Send the block with the nonce through the response channel.
+		logging.Log(fmt.Sprintf("Miner %d found a valid block", miner.id))
+		miner.currentRequest.responseChannel <- miner.currentRequest.block
+		// Move back to the idle state.
+		miner.currentRequest = nil
+		miner.state = MinerStateIdle
+	}
 }
