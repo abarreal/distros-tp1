@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -24,6 +25,7 @@ type Server struct {
 	Control       chan int
 	workerControl [](chan<- int)
 	work          func(*net.Conn)
+	topGroup      *sync.WaitGroup
 }
 
 func CreateNew(config *ServerConfig, handleConnection func(*net.Conn)) *Server {
@@ -32,7 +34,17 @@ func CreateNew(config *ServerConfig, handleConnection func(*net.Conn)) *Server {
 		make(chan int),
 		make([](chan<- int), 0, config.WorkerCount),
 		handleConnection,
+		nil,
 	}
+}
+
+func (srv *Server) RegisterOnWaitGroup(waitGroup *sync.WaitGroup) error {
+	if srv.topGroup != nil {
+		return errors.New("already registered on some other WC")
+	}
+	srv.topGroup = waitGroup
+	srv.topGroup.Add(1)
+	return nil
 }
 
 func (server *Server) Stop() {
@@ -92,6 +104,11 @@ func (server *Server) Run() error {
 	// Wait for all goroutines to finish and exit.
 	serverLog("Waiting for goroutines to finish before quitting")
 	waitGroup.Wait()
+
+	if server.topGroup != nil {
+		server.topGroup.Done()
+	}
+
 	serverLog("Quitting now")
 	return nil
 }

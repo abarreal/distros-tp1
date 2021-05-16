@@ -13,6 +13,9 @@ import (
 	"tp1.aba.distros.fi.uba.ar/interface/message"
 )
 
+const DefaultReadServerPort = 9000
+const DefaultWriteServerPort = 9010
+
 func Run() {
 	logging.Initialize("Client")
 
@@ -45,7 +48,8 @@ func handleWrite() {
 
 	// Instantiate the write chunk request.
 	request := message.CreateWriteChunk(data, uint16(len(data)))
-	response, err := send(request)
+	serverPort, _ := config.GetIntOrDefault("WriteServerPort", DefaultWriteServerPort)
+	response, err := send(request, serverPort)
 
 	if err != nil {
 		logging.LogError("Chunk could not be written", err)
@@ -67,7 +71,8 @@ func handleBlockRequest() {
 	request := message.CreateGetBlockByHashRequest(hash)
 
 	logging.Log(fmt.Sprintf("Sending block request: %s", hashx))
-	if response, err := send(request); err != nil {
+	serverPort, _ := config.GetIntOrDefault("ReadServerPort", DefaultReadServerPort)
+	if response, err := send(request, serverPort); err != nil {
 		logging.LogError("Could not retrieve block", err)
 	} else {
 		r := response.(*message.GetBlockByHashResponse)
@@ -101,7 +106,8 @@ func handleBlocksInMinuteRequest() {
 
 	logging.Log(fmt.Sprintf("Sending query for blocks in minute: %s", minuteString))
 
-	if response, err := send(request); err != nil {
+	serverPort, _ := config.GetIntOrDefault("ReadServerPort", DefaultReadServerPort)
+	if response, err := send(request, serverPort); err != nil {
 		logging.LogError("The request could not be processed", err)
 	} else {
 		r := response.(*message.ReadBlocksInMinuteResponse)
@@ -130,12 +136,11 @@ func parseTimestamp(unixTimestamp string) (time.Time, int64, error) {
 	}
 }
 
-func send(request message.Message) (message.Message, error) {
+func send(request message.Message, serverPort int) (message.Message, error) {
 	// Open a connection with the blockchain service.
 	serverName := config.GetStringOrDefault("ServerName", "localhost")
-	serverPort := config.GetStringOrDefault("ServerPort", "9000")
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", serverName, serverPort))
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", serverName, serverPort))
 
 	if err != nil {
 		logging.LogError("Could not connect to server", err)

@@ -1,28 +1,132 @@
-package service
+package domain
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 
 	"tp1.aba.distros.fi.uba.ar/common/logging"
-	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
 	"tp1.aba.distros.fi.uba.ar/interface/message"
 	"tp1.aba.distros.fi.uba.ar/node/service/middleware"
 )
 
-// The blockchain service handles client requests. Read requests are delegated to the
-// blockchain service itself. Write requests are delegated to workers that will
-// generate an appropriate nonce and return it back to the service, which will
-// send it to the blockchain.
+// The blockchain service acts as the entry point and the request dispatcher.
 type BlockchainService struct {
-	blockchain *middleware.Blockchain
+	waitGroup      *sync.WaitGroup
+	blockchain     *middleware.Blockchain
+	controlChannel chan int
+	stopping       bool
+	inputQueue     *ChunkQueue
 }
 
-func CreateBlockchainService(blockchain *middleware.Blockchain) *BlockchainService {
+func CreateBlockchainService() (*BlockchainService, error) {
 	svc := &BlockchainService{}
-	svc.blockchain = blockchain
-	return svc
+	svc.stopping = false
+	svc.waitGroup = nil
+	svc.controlChannel = make(chan int)
+
+	// Instantiate blockchain middleware.
+	if blockchain, err := middleware.CreateBlockchain(); err != nil {
+		return nil, err
+	} else {
+		svc.blockchain = blockchain
+	}
+
+	// Instantiate an input queue to hold incoming write requests.
+	svc.inputQueue = CreateChunkQueue()
+
+	return svc, nil
 }
 
+func (svc *BlockchainService) RegisterOnWaitGroup(wg *sync.WaitGroup) error {
+	if svc.waitGroup != nil {
+		return errors.New("already registered on WG")
+	}
+	logging.Log("Registering blockchain service on wait group")
+	svc.waitGroup = wg
+	svc.waitGroup.Add(1)
+	return nil
+}
+
+//=================================================================================================
+// Run
+//-------------------------------------------------------------------------------------------------
+
+func (svc *BlockchainService) Run() {
+	logging.Log("Blockchain service starting")
+
+	// Run packer.
+	logging.Log("Starting block packer")
+	// TODO
+
+	// Run writer.
+	logging.Log("Starting block writer")
+	// TODO
+
+	// Begin main loop.
+	svc.stopping = false
+
+	for !svc.stopping {
+		// Wait for a signal through the control channel. The only signal currently implemented
+		// is the stop signal, so just block until any signal is received and then stop.
+		<-svc.controlChannel
+		svc.stopping = true
+	}
+
+	// Stop and wait for packer.
+	logging.Log("Stopping packer")
+	// TODO
+
+	// Stop and wait for writer.
+	logging.Log("Stopping writer")
+	// TODO
+
+	// Terminate.
+	if svc.waitGroup != nil {
+		svc.waitGroup.Done()
+	}
+
+	logging.Log("Blockchain service stopping")
+}
+
+func (svc *BlockchainService) Stop() {
+	logging.Log("Sending stop signal to blockchain service")
+	svc.controlChannel <- 0
+}
+
+//=================================================================================================
+// Read
+//-------------------------------------------------------------------------------------------------
+
+func (svc *BlockchainService) HandleGetBlock(req *message.GetBlockByHashRequest) (
+	*message.GetBlockByHashResponse, error) {
+	// Simply delegate the request to the blockchain middleware.
+	response, err := svc.blockchain.GetOneWithHash(req)
+
+	if err == nil {
+		hash := response.Block().Hash().Hex()
+		logging.Log(fmt.Sprintf("Retrieved block with hash %s", hash))
+	}
+	return response, err
+}
+
+func (svc *BlockchainService) HandleGetBlocksFromMinute(req *message.ReadBlocksInMinuteRequest) (
+	*message.ReadBlocksInMinuteResponse, error) {
+	// Simply delegate the request to the blockchain middleware.
+	return svc.blockchain.GetBlocksFromMinute(req)
+}
+
+//=================================================================================================
+// Write
+//-------------------------------------------------------------------------------------------------
+
+func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
+	*message.WriteChunkResponse, error) {
+	// Push the request through the input queue.
+	return svc.inputQueue.PushRequest(req), nil
+}
+
+/*
 func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
 	*message.WriteChunkResponse, error) {
 	// TODO: Store the chunk for writing later. Have a goroutine in the background periodically
@@ -54,21 +158,4 @@ func (svc *BlockchainService) HandleWriteChunk(req *message.WriteChunk) (
 	}
 
 }
-
-func (svc *BlockchainService) HandleGetBlock(req *message.GetBlockByHashRequest) (
-	*message.GetBlockByHashResponse, error) {
-	// Simply delegate the request to the blockchain middleware.
-	response, err := svc.blockchain.GetOneWithHash(req)
-
-	if err == nil {
-		hash := response.Block().Hash().Hex()
-		logging.Log(fmt.Sprintf("Retrieved block with hash %s", hash))
-	}
-	return response, err
-}
-
-func (svc *BlockchainService) HandleGetBlocksFromMinute(req *message.ReadBlocksInMinuteRequest) (
-	*message.ReadBlocksInMinuteResponse, error) {
-	// Simply delegate the request to the blockchain middleware.
-	return svc.blockchain.GetBlocksFromMinute(req)
-}
+*/

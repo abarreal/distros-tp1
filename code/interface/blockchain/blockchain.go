@@ -226,6 +226,10 @@ func (block *Block) Timestamp() int64 {
 	return int64(binary.LittleEndian.Uint64(block.buffer[offset : offset+length]))
 }
 
+func (block *Block) UpdateTimestamp() {
+	block.SetCreationTime(time.Now())
+}
+
 func (block *Block) SetCreationTime(time time.Time) {
 	block.setTimestamp(time.UTC().Unix())
 }
