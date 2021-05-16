@@ -440,8 +440,8 @@ func (repo *BlockRepository) getIndexPath(block *blockchain.Block) string {
 }
 
 func (repo *BlockRepository) getIndexPathForHash(hash *number.Big32) string {
-	// Use the first byte of the hash as an index.
-	firstByteFromHash := hash.Bytes[0]
+	// Use the last byte of the hash as an index/
+	firstByteFromHash := hash.Bytes[len(hash.Bytes)-1]
 	indexFilename := fmt.Sprintf("index-%d", firstByteFromHash)
 	return path.Join(repo.IndexDir, indexFilename)
 }

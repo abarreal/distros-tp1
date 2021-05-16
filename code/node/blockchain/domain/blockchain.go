@@ -9,6 +9,7 @@ import (
 	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
 	"tp1.aba.distros.fi.uba.ar/node/blockchain/repository"
 
+	"tp1.aba.distros.fi.uba.ar/common/logging"
 	number "tp1.aba.distros.fi.uba.ar/common/number/big32"
 )
 
@@ -17,6 +18,7 @@ type Blockchain struct {
 	repository        *repository.BlockRepository
 	currentDifficulty *number.Big32
 	lastWrite         time.Time
+	minedCount        int
 }
 
 func CreateBlockchain(repo *repository.BlockRepository) *Blockchain {
@@ -27,6 +29,9 @@ func CreateBlockchain(repo *repository.BlockRepository) *Blockchain {
 	// to be now.
 	blockchain.currentDifficulty = repo.PreviousBlockDifficulty()
 	blockchain.lastWrite = time.Now().UTC()
+	// Keep track of the amount of blocks mined to update mining
+	// difficulty every fixed amount of successful mining requests.
+	blockchain.minedCount = 0
 	return blockchain
 }
 
@@ -50,17 +55,25 @@ func (blockchain *Blockchain) WriteBlock(block *blockchain.Block) error {
 	if !block.Difficulty().Equals(blockchain.currentDifficulty) {
 		return errors.New("unexpected difficulty")
 	}
-
-	// TODO: Implement check to see if the hash is less than or equal
-	// to the expected value, possibly in the save method.
+	if !block.IsHashValidForDifficulty() {
+		return errors.New("unexpected hash value for the given difficulty")
+	}
 
 	// Try writing the block to the storage.
 	var newDifficulty *number.Big32 = nil
 	writeTime := time.Now().UTC()
 
 	computeDifficulty := func() *number.Big32 {
+		// Only update the difficulty every 256 mined blocks.
+		if (blockchain.minedCount % 256) != 0 {
+			// Return difficulty as is. Do not update difficulty yet.
+			newDifficulty = number.Copy(block.Difficulty())
+			return newDifficulty
+		}
+
 		// The block has been accepted, so we mark the successful write attempt
 		// and recompute difficulty.
+		logging.Log("Updating difficulty")
 		deltaSeconds := int64(writeTime.Sub(blockchain.lastWrite).Seconds())
 		// Adjust the amount of seconds to avoid dividing by zero.
 		if deltaSeconds == 0 {
@@ -88,6 +101,7 @@ func (blockchain *Blockchain) WriteBlock(block *blockchain.Block) error {
 	// Keep track of the current difficulty.
 	blockchain.currentDifficulty = newDifficulty
 	blockchain.lastWrite = writeTime
+	blockchain.minedCount++
 	return nil
 }
 

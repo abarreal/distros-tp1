@@ -21,6 +21,12 @@ func init() {
 	One = FromBig(big.NewInt(1))
 }
 
+func Copy(n *Big32) *Big32 {
+	b := &Big32{}
+	copy(b.Bytes[:], n.Bytes[:])
+	return b
+}
+
 func FromSlice(source []byte) *Big32 {
 	b := &Big32{}
 	copy(b.Bytes[:], source[:32])

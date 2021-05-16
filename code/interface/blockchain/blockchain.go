@@ -350,6 +350,10 @@ func getFieldPositionInfo(name string) (uint32, uint32) {
 
 func (block *Block) AttemptHash() bool {
 	block.GenerateNonce()
+	return block.IsHashValidForDifficulty()
+}
+
+func (block *Block) IsHashValidForDifficulty() bool {
 	hash := block.Hash()
 	difficulty := block.Difficulty()
 	// Compute the hash and evaluate whether it meets the difficulty requirements.

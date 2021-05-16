@@ -173,6 +173,7 @@ func (wr *BlockWriter) handleMiningResponse(block *blockchain.Block) {
 		}
 		// Send the response back upstream to notify results and change state.
 		wr.responseQueue <- blockResponse
+		wr.currentMiningRequest = nil
 		wr.state = BlockWriterStateWaitingForBlock
 	}
 }
