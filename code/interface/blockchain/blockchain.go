@@ -156,7 +156,7 @@ func CreateBlock(previousHash *b32.Big32, difficulty *b32.Big32, entries *Chunk)
 	return block, nil
 }
 
-func (block *Block) LenghtWithMetadata() uint32 {
+func (block *Block) LengthWithMetadata() uint32 {
 	// Get the length of the block with metadata, including four bytes for the length
 	// of the buffer, 32 bytes for the hash, and the length of the buffer itself.
 	return uint32(4 + 32 + len(block.buffer))
@@ -172,7 +172,7 @@ func (block *Block) Buffer() []byte {
 
 func (block *Block) BufferWithMetadata() []byte {
 	// Instantiate a buffer object.
-	buffer := bytes.NewBuffer(make([]byte, 0, block.LenghtWithMetadata()))
+	buffer := bytes.NewBuffer(make([]byte, 0, block.LengthWithMetadata()))
 	// Write the block to the buffer and return.
 	block.WriteWithMetadata(buffer)
 	return buffer.Bytes()

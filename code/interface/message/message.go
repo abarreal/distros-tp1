@@ -228,7 +228,7 @@ func CreateGetBlockByHashResponse(block *blockchain.Block) *GetBlockByHashRespon
 	if block != nil {
 		response.block = block
 		// Set the length of the data: 1 byte for the found flag, plus the block.
-		response.datalen = uint64(block.LenghtWithMetadata()) + 1
+		response.datalen = uint64(block.LengthWithMetadata()) + 1
 		buffer := bytes.NewBuffer(make([]byte, 0, response.datalen))
 		// Write 1 to the buffer to indicate that the block was found.
 		buffer.Write([]byte{1})
@@ -258,7 +258,7 @@ func handleGetBlockByHashResponse(opcode uint8, reader io.Reader) (Message, erro
 			return nil, err
 		} else {
 			response.block = block
-			response.datalen = uint64(block.LenghtWithMetadata()) + 1
+			response.datalen = uint64(block.LengthWithMetadata()) + 1
 			response.data = make([]byte, response.datalen)
 			response.data[0] = 1
 			copy(response.data[1:], block.BufferWithMetadata())
@@ -333,7 +333,7 @@ func CreateReadBlocksInMinuteResponse(timestamp int64, blocks []*blockchain.Bloc
 	// Compute the total length of the blocks first.
 	total := 0
 	for _, block := range blocks {
-		total += int(block.LenghtWithMetadata())
+		total += int(block.LengthWithMetadata())
 	}
 	// Instantiate a buffer to hold all blocks.
 	blockbuffer := bytes.NewBuffer(make([]byte, 0, total))
@@ -371,7 +371,7 @@ func handleReadBlocksInMinuteResponse(opcode uint8, reader io.Reader) (Message, 
 			return nil, err
 		} else {
 			blocks[i] = block
-			length += block.LenghtWithMetadata()
+			length += block.LengthWithMetadata()
 		}
 	}
 
@@ -433,7 +433,7 @@ type WriteBlock struct {
 func CreateWriteBlock(block *blockchain.Block) *WriteBlock {
 	request := &WriteBlock{}
 	request.opcode = opcodes["WriteBlock"]
-	request.datalen = uint64(block.LenghtWithMetadata())
+	request.datalen = uint64(block.LengthWithMetadata())
 	// Serialize the block and set it on the request.
 	buffer := bytes.NewBuffer(make([]byte, 0, request.datalen))
 	block.WriteWithMetadata(buffer)
@@ -458,7 +458,7 @@ func handleWriteBlock(opcode uint8, reader io.Reader) (Message, error) {
 	}
 
 	request.block = block
-	request.datalen = uint64(block.LenghtWithMetadata())
+	request.datalen = uint64(block.LengthWithMetadata())
 	request.data = block.BufferWithMetadata()
 	return request, nil
 }
