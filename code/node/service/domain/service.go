@@ -17,6 +17,7 @@ type BlockchainService struct {
 	controlChannel chan int
 	stopping       bool
 	inputQueue     *ChunkQueue
+	writer         *BlockWriter
 }
 
 func CreateBlockchainService() (*BlockchainService, error) {
@@ -63,9 +64,9 @@ func (svc *BlockchainService) Run() {
 
 	// Run writer.
 	logging.Log("Starting block writer")
-	writer := CreateBlockWriter(svc.blockchain, packer.BlockQueue(), packer.ResponseChannel())
-	writer.RegisterOnWaitGroup(svcGroup)
-	go writer.Run()
+	svc.writer = CreateBlockWriter(svc.blockchain, packer.BlockQueue(), packer.ResponseChannel())
+	svc.writer.RegisterOnWaitGroup(svcGroup)
+	go svc.writer.Run()
 
 	// Begin main loop.
 	svc.stopping = false
@@ -79,7 +80,7 @@ func (svc *BlockchainService) Run() {
 
 	// Stop and wait for subservices.
 	packer.Stop()
-	writer.Stop()
+	svc.writer.Stop()
 	// Wait for subservices to finish.
 	svcGroup.Wait()
 	// Indicate termination if part of a wait group.
@@ -115,6 +116,15 @@ func (svc *BlockchainService) HandleGetBlocksFromMinute(req *message.ReadBlocksI
 	*message.ReadBlocksInMinuteResponse, error) {
 	// Simply delegate the request to the blockchain middleware.
 	return svc.blockchain.GetBlocksFromMinute(req)
+}
+
+func (svc *BlockchainService) HandleGetMiningStatistics(req *message.GetMiningStatistics) (
+	*message.GetMiningStatisticsResponse, error) {
+	// Get mining statistics from the writer.
+	stats := svc.writer.MiningStats()
+	// Construct the response and return.
+	res := message.CreateGetMiningStatisticsResponse(stats)
+	return res, nil
 }
 
 //=================================================================================================

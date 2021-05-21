@@ -20,31 +20,36 @@ const OpGetBlockWithHash uint8 = 0x02
 const OpGetBlocksInMinute uint8 = 0x04
 const OpWriteBlock uint8 = 0x06
 const OpWriteChunk uint8 = 0x08
+const OpGetMiningStatistics uint8 = 0x0a
 
 var opcodes map[string]uint8 = map[string]uint8{
-	"GetMiningInfo":              OpGetMiningInfo,
-	"GetMiningInfoResponse":      0x01,
-	"GetBlockByHash":             OpGetBlockWithHash,
-	"GetBlockByHashResponse":     0x03,
-	"ReadBlocksInMinute":         OpGetBlocksInMinute,
-	"ReadBlocksInMinuteResponse": 0x05,
-	"WriteBlock":                 OpWriteBlock,
-	"WriteBlockResponse":         0x07,
-	"WriteChunk":                 OpWriteChunk,
-	"WriteChunkResponse":         0x09,
+	"GetMiningInfo":               OpGetMiningInfo,
+	"GetMiningInfoResponse":       0x01,
+	"GetBlockByHash":              OpGetBlockWithHash,
+	"GetBlockByHashResponse":      0x03,
+	"ReadBlocksInMinute":          OpGetBlocksInMinute,
+	"ReadBlocksInMinuteResponse":  0x05,
+	"WriteBlock":                  OpWriteBlock,
+	"WriteBlockResponse":          0x07,
+	"WriteChunk":                  OpWriteChunk,
+	"WriteChunkResponse":          0x09,
+	"GetMiningStatistics":         OpGetMiningStatistics,
+	"GetMiningStatisticsResponse": 0x0b,
 }
 
 var handlers map[uint8]handler = map[uint8]handler{
-	opcodes["GetMiningInfo"]:              handleGetMiningInfo,
-	opcodes["GetMiningInfoResponse"]:      handleGetMiningInfoResponse,
-	opcodes["GetBlockByHash"]:             handleGetBlockByHash,
-	opcodes["GetBlockByHashResponse"]:     handleGetBlockByHashResponse,
-	opcodes["ReadBlocksInMinute"]:         handleReadBlocksInMinute,
-	opcodes["ReadBlocksInMinuteResponse"]: handleReadBlocksInMinuteResponse,
-	opcodes["WriteBlock"]:                 handleWriteBlock,
-	opcodes["WriteBlockResponse"]:         handleWriteBlockResponse,
-	opcodes["WriteChunk"]:                 handleWriteChunk,
-	opcodes["WriteChunkResponse"]:         handleWriteChunkResponse,
+	opcodes["GetMiningInfo"]:               handleGetMiningInfo,
+	opcodes["GetMiningInfoResponse"]:       handleGetMiningInfoResponse,
+	opcodes["GetBlockByHash"]:              handleGetBlockByHash,
+	opcodes["GetBlockByHashResponse"]:      handleGetBlockByHashResponse,
+	opcodes["ReadBlocksInMinute"]:          handleReadBlocksInMinute,
+	opcodes["ReadBlocksInMinuteResponse"]:  handleReadBlocksInMinuteResponse,
+	opcodes["WriteBlock"]:                  handleWriteBlock,
+	opcodes["WriteBlockResponse"]:          handleWriteBlockResponse,
+	opcodes["WriteChunk"]:                  handleWriteChunk,
+	opcodes["WriteChunkResponse"]:          handleWriteChunkResponse,
+	opcodes["GetMiningStatistics"]:         handleGetMiningStatistics,
+	opcodes["GetMiningStatisticsResponse"]: handleGetMiningStatisticsResponse,
 }
 
 //=================================================================================================
@@ -106,6 +111,44 @@ func (m *message) Write(writer io.Writer) error {
 	}
 	// Return no error.
 	return nil
+}
+
+//=================================================================================================
+// Readers
+//-------------------------------------------------------------------------------------------------
+
+func ReadMessage(reader io.Reader) (Message, error) {
+	// Read the opcode of the message.
+	opcode := make([]byte, 1)
+	if err := read(reader, opcode); err != nil {
+		return nil, err
+	}
+
+	// Call the appropriate handler depending on the opcode.
+	if handler, ok := handlers[opcode[0]]; ok {
+		return handler(opcode[0], reader)
+	} else {
+		return nil, errors.New("unexpected opcode")
+	}
+}
+
+func readCount(opcode uint8, reader io.Reader, datalength int) (*message, error) {
+	// Read a fixed amount of bytes as data for the message.
+	data := make([]byte, datalength)
+	// Try reading the whole data buffer from the reader.
+	if err := read(reader, data); err != nil {
+		return nil, err
+	}
+	// Set data on the response.
+	msg := &message{}
+	msg.opcode = opcode
+	msg.datalen = uint64(len(data))
+	msg.data = data
+	return msg, nil
+}
+
+func read(reader io.Reader, buffer []byte) error {
+	return communication.Read(reader, buffer)
 }
 
 //=================================================================================================
@@ -593,39 +636,156 @@ func (r *WriteChunkResponse) Accepted() bool {
 }
 
 //=================================================================================================
-// Readers
+// Get Mining Statistics
 //-------------------------------------------------------------------------------------------------
 
-func ReadMessage(reader io.Reader) (Message, error) {
-	// Read the opcode of the message.
-	opcode := make([]byte, 1)
-	if err := read(reader, opcode); err != nil {
-		return nil, err
-	}
-
-	// Call the appropriate handler depending on the opcode.
-	if handler, ok := handlers[opcode[0]]; ok {
-		return handler(opcode[0], reader)
-	} else {
-		return nil, errors.New("unexpected opcode")
-	}
+// Opcode: 1 byte
+type GetMiningStatistics struct {
+	message
 }
 
-func readCount(opcode uint8, reader io.Reader, datalength int) (*message, error) {
-	// Read a fixed amount of bytes as data for the message.
-	data := make([]byte, datalength)
-	// Try reading the whole data buffer from the reader.
-	if err := read(reader, data); err != nil {
-		return nil, err
-	}
-	// Set data on the response.
-	msg := &message{}
-	msg.opcode = opcode
-	msg.datalen = uint64(len(data))
-	msg.data = data
-	return msg, nil
+type MiningStats struct {
+	MinerId            int
+	MiningSuccessCount int
+	MiningFailureCount int
 }
 
-func read(reader io.Reader, buffer []byte) error {
-	return communication.Read(reader, buffer)
+func CreateMiningStats(minerId int, successCount int, failureCount int) *MiningStats {
+	return &MiningStats{minerId, successCount, failureCount}
+}
+
+func CreateGetMiningStatistics() *GetMiningStatistics {
+	stats := &GetMiningStatistics{}
+	stats.opcode = OpGetMiningStatistics
+	stats.datalen = 0
+	stats.data = nil
+	return stats
+}
+
+func handleGetMiningStatistics(opcode uint8, reader io.Reader) (Message, error) {
+	stats := &GetMiningStatistics{}
+	stats.opcode = opcode
+	stats.datalen = 0
+	stats.data = nil
+	return stats, nil
+}
+
+// Opcode: 1 byte
+// Miner count: 2 bytes
+// Miner entries, one for each miner, 20 bytes each.
+// Each entry has the following fields:
+// * Miner ID (2 bytes)
+// * Successful mining attempts (8 bytes)
+// * Failed mining attempts (8 bytes)
+type GetMiningStatisticsResponse struct {
+	message
+	minerStats []*MiningStats
+}
+
+func (msr *GetMiningStatisticsResponse) MinerStats() []*MiningStats {
+	return msr.minerStats
+}
+
+const MiningStatisticsResponseHeaderLength int = 2 // Miner count.
+const MiningStatisticsResponseEntryLength int = 18 // An entry for a single miner.
+
+func CreateGetMiningStatisticsResponse(stats []*MiningStats) *GetMiningStatisticsResponse {
+	res := &GetMiningStatisticsResponse{}
+	res.opcode = opcodes["GetMiningStatisticsResponse"]
+	res.minerStats = stats
+
+	// Compute the length of the data buffer without the opcode.
+	// The data buffer has its own header (amount of miners) and each entry has its own
+	// format (miner ID, successful mining attempts, failed mining attempts).
+	res.datalen = uint64(
+		MiningStatisticsResponseHeaderLength + MiningStatisticsResponseEntryLength*len(stats))
+
+	// Create the buffer itself.
+	res.data = make([]byte, res.datalen)
+
+	// Set the amount of miners on the buffer.
+	binary.LittleEndian.PutUint16(res.data[0:2], uint16(len(stats)))
+
+	// Set the fields on the buffer. Begin writing from the end of the header,
+	// which contains the amount of miners.
+	currentOffset := MiningStatisticsResponseHeaderLength
+
+	for _, stat := range stats {
+		// Set the miner ID on the buffer.
+		binary.LittleEndian.PutUint16(
+			res.data[currentOffset:currentOffset+2], uint16(stat.MinerId))
+		// Set amount of blocks successfully mined.
+		binary.LittleEndian.PutUint64(
+			res.data[currentOffset+2:currentOffset+10], uint64(stat.MiningSuccessCount))
+		// Set amount of mining failures.
+		binary.LittleEndian.PutUint64(
+			res.data[currentOffset+10:currentOffset+18], uint64(stat.MiningFailureCount))
+		// Move to the next entry.
+		currentOffset += MiningStatisticsResponseEntryLength
+	}
+
+	return res
+}
+
+func handleGetMiningStatisticsResponse(opcode uint8, reader io.Reader) (Message, error) {
+
+	// Read the amount of miners.
+	minerCountBuffer := make([]byte, MiningStatisticsResponseHeaderLength)
+	if err := read(reader, minerCountBuffer); err != nil {
+		return nil, err
+	}
+	minerCount := binary.LittleEndian.Uint16(minerCountBuffer)
+
+	// Compute the length of the remaining data and create a buffer.
+	minerDataBuffer := make([]byte, uint16(MiningStatisticsResponseEntryLength)*minerCount)
+
+	// Read each miner entry. Instantiate a MiningStats object from each one of them.
+	minerStatObjects := make([]*MiningStats, minerCount)
+	currentOffset := 0
+
+	for i := uint16(0); i < minerCount; i++ {
+
+		// Read the miner ID.
+		if err := read(reader, minerDataBuffer[currentOffset:currentOffset+2]); err != nil {
+			return nil, err
+		}
+		minerId := binary.LittleEndian.Uint16(minerDataBuffer[currentOffset : currentOffset+2])
+
+		// Read the amount of successfully mined blocks.
+		if err := read(reader, minerDataBuffer[currentOffset+2:currentOffset+2+8]); err != nil {
+			return nil, err
+		}
+		successes := binary.LittleEndian.Uint64(minerDataBuffer[currentOffset+2 : currentOffset+2+8])
+
+		// Read the amount of mining failures.
+		if err := read(reader, minerDataBuffer[currentOffset+10:currentOffset+10+8]); err != nil {
+			return nil, err
+		}
+		failures := binary.LittleEndian.Uint64(minerDataBuffer[currentOffset+10 : currentOffset+10+8])
+
+		// Create a MiningStats object from these values.
+		currentStats := &MiningStats{}
+		currentStats.MinerId = int(minerId)
+		currentStats.MiningSuccessCount = int(successes)
+		currentStats.MiningFailureCount = int(failures)
+		minerStatObjects[i] = currentStats
+
+		// Increase offset.
+		currentOffset += MiningStatisticsResponseEntryLength
+	}
+
+	// Create actual message object.
+	response := &GetMiningStatisticsResponse{}
+	response.opcode = opcode
+	response.minerStats = minerStatObjects
+	// Create the data buffer.
+	minerDataOffset := len(minerCountBuffer)
+	minerDataLength := len(minerDataBuffer)
+	response.datalen = uint64(minerDataOffset) + uint64(minerDataLength)
+	response.data = make([]byte, response.datalen)
+
+	copy(response.data[0:len(minerCountBuffer)], minerCountBuffer)
+	copy(response.data[minerDataOffset:minerDataOffset+minerDataLength], minerDataBuffer)
+
+	return response, nil
 }

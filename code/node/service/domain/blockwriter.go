@@ -103,6 +103,16 @@ func (writer *BlockWriter) Run() {
 	}
 }
 
+func (wr *BlockWriter) MiningStats() []*message.MiningStats {
+	// Instantiate an array to hold as many stat objects as there are miners.
+	stats := make([]*message.MiningStats, len(wr.miners))
+	// Get statistics for all miners.
+	for i, miner := range wr.miners {
+		stats[i] = miner.MiningStats()
+	}
+	return stats
+}
+
 func (wr *BlockWriter) loop() {
 	// Proceed depending on current state.
 	switch wr.state {

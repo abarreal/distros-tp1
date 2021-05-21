@@ -243,4 +243,4 @@ Para buscar un bloque por hash, hay que ejecutar el cliente pasando los argument
 
 #### Pedido de estadísticas de minería
 
-TODO
+Para solicitar estadísticas de minería hay que ejecutar el cliente pasando el string `stats` como argumento. Este pedido no involucra al blockchain server; es el blockchain service quien mantiene las estadísticas de los mineros que gestiona. Cada minero mantiene en memoria sus estadísticas como un recurso compartido protegido por locks. Para separar los mineros en procesos independientes, habría que incorporar las estadísticas al protocolo de comunicación entre el Block Writer y los mineros.

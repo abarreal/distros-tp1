@@ -29,6 +29,8 @@ func Run() {
 		handleBlockRequest()
 	case "minute":
 		handleBlocksInMinuteRequest()
+	case "stats":
+		handleGetMiningStats()
 	}
 }
 
@@ -124,6 +126,25 @@ func handleBlocksInMinuteRequest() {
 				chunk := it.Chunk()
 				logging.Log(fmt.Sprintf("Found entry: %s", string(chunk.Data)))
 			}
+		}
+	}
+}
+
+func handleGetMiningStats() {
+	// Instantiate the request.
+	request := message.CreateGetMiningStatistics()
+	serverPort, _ := config.GetIntOrDefault("ReadServerPort", DefaultReadServerPort)
+	if response, err := send(request, serverPort); err != nil {
+		logging.LogError("The request could not be processed", err)
+	} else {
+		r := response.(*message.GetMiningStatisticsResponse)
+		// Display statistics for each miner.
+		stats := r.MinerStats()
+
+		for _, stat := range stats {
+			logging.Log(fmt.Sprintf("Miner %d", stat.MinerId))
+			logging.Log(fmt.Sprintf("Blocks mined successfully: %d", stat.MiningSuccessCount))
+			logging.Log(fmt.Sprintf("Failed mining attempts: %d", stat.MiningFailureCount))
 		}
 	}
 }

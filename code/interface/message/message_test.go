@@ -322,6 +322,85 @@ func TestWriteChunk(t *testing.T) {
 	}
 }
 
+func TestGetMiningStatisticsRequest(t *testing.T) {
+	// Instantiate a get mining statistics request.
+	request := CreateGetMiningStatistics()
+
+	// Ensure that the request has the correct opcode.
+	if request.Opcode() != OpGetMiningStatistics {
+		t.Fatal("unexpected opcode after creation")
+	}
+
+	// Write the request to a buffer.
+	buffer := bytes.NewBuffer(make([]byte, 0, request.DataLength()))
+	if err := request.Write(buffer); err != nil {
+		t.Fatalf("could not write buffer: %s", err.Error())
+	}
+	// Read the request from the buffer.
+	msg, err := ReadMessage(buffer)
+	if err != nil {
+		t.Fatalf("could not read request: %s", err.Error())
+	}
+	request2 := msg.(*GetMiningStatistics)
+
+	// Ensure that data matches.
+	if request.Opcode() != request2.Opcode() {
+		t.Fatal("unexpected opcode")
+	}
+}
+
+func TestGetMiningStatisticsResponse(t *testing.T) {
+	// Instantiate some mining stats.
+	s1 := CreateMiningStats(0, 1, 10)
+	s2 := CreateMiningStats(1, 3, 8)
+	stats := []*MiningStats{s1, s2}
+
+	// Instantiate a response object.
+	response := CreateGetMiningStatisticsResponse(stats)
+
+	// Ensure that the response was properly created.
+	if len(response.MinerStats()) != 2 {
+		t.Fatal("unexpected miner statistics count")
+	}
+	if response.MinerStats()[1].MinerId != s2.MinerId {
+		t.Fatal("unexpected miner data info")
+	}
+
+	// Write the response to a buffer.
+	buffer := bytes.NewBuffer(make([]byte, 0, response.DataLength()))
+	if err := response.Write(buffer); err != nil {
+		t.Fatalf("could not write buffer: %s", err.Error())
+	}
+	// Read the request from the buffer.
+	msg, err := ReadMessage(buffer)
+	if err != nil {
+		t.Fatalf("could not read response: %s", err.Error())
+	}
+	response2 := msg.(*GetMiningStatisticsResponse)
+
+	// Ensure that the response has the correct data.
+	if len(response.MinerStats()) != len(response2.MinerStats()) {
+		t.Fatal("unexpected miner stat count")
+	}
+	original := response.MinerStats()
+	retrieved := response2.MinerStats()
+
+	for i := 0; i < len(original); i++ {
+		currentOriginal := original[i]
+		currentRetrieved := retrieved[i]
+
+		if currentOriginal.MinerId != currentRetrieved.MinerId {
+			t.Fatal("unexpected miner id")
+		}
+		if currentOriginal.MiningSuccessCount != currentRetrieved.MiningSuccessCount {
+			t.Fatal("unexpected mining success count")
+		}
+		if currentOriginal.MiningFailureCount != currentRetrieved.MiningFailureCount {
+			t.Fatal("unexpected mining failure count")
+		}
+	}
+}
+
 func random32() *b32.Big32 {
 	buff := make([]byte, 32)
 	rand.Read(buff)

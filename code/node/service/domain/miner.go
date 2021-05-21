@@ -7,6 +7,7 @@ import (
 	"tp1.aba.distros.fi.uba.ar/common/logging"
 	"tp1.aba.distros.fi.uba.ar/common/number/big32"
 	"tp1.aba.distros.fi.uba.ar/interface/blockchain"
+	"tp1.aba.distros.fi.uba.ar/interface/message"
 )
 
 //=================================================================================================
@@ -52,6 +53,10 @@ type Miner struct {
 	controlChannel chan int
 	requestChannel chan *MiningRequest
 	currentRequest *MiningRequest
+	// Keep statistics of the amount of mined blocks.
+	miningSuccessCount   int
+	miningFailureCount   int
+	miningStatisticsLock *sync.RWMutex
 }
 
 func CreateMiner(id int) *Miner {
@@ -62,6 +67,9 @@ func CreateMiner(id int) *Miner {
 	miner.controlChannel = make(chan int)
 	miner.requestChannel = make(chan *MiningRequest)
 	miner.currentRequest = nil
+	miner.miningSuccessCount = 0
+	miner.miningFailureCount = 0
+	miner.miningStatisticsLock = &sync.RWMutex{}
 	return miner
 }
 
@@ -93,6 +101,16 @@ func (miner *Miner) StopMining() {
 func (miner *Miner) Stop() {
 	logging.Log(fmt.Sprintf("Sending quit signal to miner %d", miner.id))
 	miner.controlChannel <- MinerOpQuit
+}
+
+func (miner *Miner) MiningStats() *message.MiningStats {
+	miner.miningStatisticsLock.RLock()
+	defer miner.miningStatisticsLock.RUnlock()
+	stats := &message.MiningStats{}
+	stats.MinerId = miner.id
+	stats.MiningSuccessCount = miner.miningSuccessCount
+	stats.MiningFailureCount = miner.miningFailureCount
+	return stats
 }
 
 func (miner *Miner) loop() {
@@ -157,8 +175,17 @@ func (miner *Miner) mine() {
 		// Send the block with the nonce through the response channel.
 		logging.Log(fmt.Sprintf("Miner %d found a valid block", miner.id))
 		miner.currentRequest.responseChannel <- miner.currentRequest.block
+		// Increase the count of successfully mined blocks.
+		miner.miningStatisticsLock.Lock()
+		miner.miningSuccessCount++
+		miner.miningStatisticsLock.Unlock()
 		// Move back to the idle state.
 		miner.currentRequest = nil
 		miner.state = MinerStateIdle
+	} else {
+		// Increase the count of mining failures.
+		miner.miningStatisticsLock.Lock()
+		miner.miningFailureCount++
+		miner.miningStatisticsLock.Unlock()
 	}
 }

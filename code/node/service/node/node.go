@@ -148,6 +148,8 @@ func handleReadConnection(svc *domain.BlockchainService, conn net.Conn) {
 		handleGetBlockWithHashRequest(svc, msg, conn)
 	case message.OpGetBlocksInMinute:
 		handleGetBlocksInMinute(svc, msg, conn)
+	case message.OpGetMiningStatistics:
+		handleGetMiningStatistics(svc, msg, conn)
 	}
 }
 
@@ -165,6 +167,16 @@ func handleGetBlocksInMinute(svc *domain.BlockchainService, msg message.Message,
 	logging.Log("Handling get blocks in minute request")
 	if response, err := svc.HandleGetBlocksFromMinute(msg.(*message.ReadBlocksInMinuteRequest)); err != nil {
 		logging.LogError("Find in minute request failed", err)
+	} else {
+		logging.Log("Writing response")
+		response.Write(conn)
+	}
+}
+
+func handleGetMiningStatistics(svc *domain.BlockchainService, msg message.Message, conn net.Conn) {
+	logging.Log("Handling get mining statistics request")
+	if response, err := svc.HandleGetMiningStatistics(msg.(*message.GetMiningStatistics)); err != nil {
+		logging.LogError("Get mining statistics request failed", err)
 	} else {
 		logging.Log("Writing response")
 		response.Write(conn)
