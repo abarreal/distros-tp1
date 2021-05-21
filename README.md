@@ -190,6 +190,14 @@ El block writer envía pedidos de minería a los mineros a través de una cola M
 
 
 
+Las escrituras son eventualmente consistentes. La figura P.5 muestra el flujo de escritura de un chunk desde el punto de vista del cliente. El cliente inicia la conexión, la cual es aceptada por el Write Connection Listener en el blockchain service y acolada para ser eventualmente procesada por un worker Write Connection Handler. Cuando el worker toma la conexión, extrae el mensaje WriteChunk y escribe el objeto Chunk a la Chunk Queue, la cual retorna inmediatamente una respuesta que puede ser devuelta al cliente. En paralelo, el resto del sistema procesará el chunk, eventualmente escribiendo un bloque que lo contiene a la blockchain y permitiendo al cliente recuperarlo con un pedido de lectura.
+
+![activity-block-write-accept](img/activity-block-write-accept.png)
+
+
+
+
+
 ## Vista de desarrollo
 
 El programa está escrito como un único binario que ejecuta el cliente, el blockchain service o el blockchain server dependiendo de los argumentos provistos. Los subdirectorios en el directorio de código son los siguientes:
