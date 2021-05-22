@@ -1,7 +1,6 @@
-FROM alpine:3.7
-
-# Install netcat.
-RUN apk add --update --no-cache netcat-openbsd
+FROM tp1node:latest
 
 # Add tests.
 ADD ./tests/ /tmp/tests
+# Copy client configuration into the service.
+COPY ./client.env /etc/distros/config/client.env

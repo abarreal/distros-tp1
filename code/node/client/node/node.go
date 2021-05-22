@@ -16,8 +16,11 @@ import (
 const DefaultReadServerPort = 9000
 const DefaultWriteServerPort = 9010
 
+const clientConfigPath = "/etc/distros/config/client.env"
+
 func Run() {
 	logging.Initialize("Client")
+	config.UseFile(clientConfigPath)
 
 	// Identify the argument for the program.
 	cmd := os.Args[1]
@@ -159,7 +162,7 @@ func parseTimestamp(unixTimestamp string) (time.Time, int64, error) {
 
 func send(request message.Message, serverPort int) (message.Message, error) {
 	// Open a connection with the blockchain service.
-	serverName := config.GetStringOrDefault("ServerName", "localhost")
+	serverName := config.GetStringOrDefault("ServiceHostName", "localhost")
 
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", serverName, serverPort))
 
