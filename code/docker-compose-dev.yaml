@@ -1,0 +1,61 @@
+version: '3'
+services:
+
+  server:
+    container_name: server
+    image: tp1node:latest
+    entrypoint: /node blockchain
+    environment:
+      - ReaderCount=2
+    networks:
+      - testing_net
+    volumes:
+      - ./config/blockchain:/etc/distros/config:ro
+
+  service:
+    container_name: service
+    image: tp1node:latest
+    entrypoint: /node service
+    environment:
+      - BlockchainServerName=server
+      - ReaderCount=2
+    depends_on:
+      - server
+    networks:
+      - testing_net
+    volumes:
+      - ./config/service:/etc/distros/config:ro
+
+networks:
+  testing_net:
+    name: testing_net
+    ipam:
+      driver: default
+      config:
+       - subnet: 172.25.125.0/24
+
+#  server:
+#    container_name: server
+#    image: tp1server:latest
+#    entrypoint: python3 /node
+#    environment:
+#      - SERVER_IP=server
+#      - SERVER_PORT=12345
+#    networks:
+#      - testing_net
+#    volumes:
+#      - ./config/server:/etc/distros:ro
+
+#  client1:
+#    container_name: client1
+#    image: client:latest
+#    entrypoint: /client
+#    environment:
+#      - CLI_ID=1
+#      - CLI_SERVER_ADDRESS=server:12345
+#    networks:
+#      - testing_net
+#    volumes:
+#      - ./config/client:/etc/distros:ro
+#    depends_on:
+#      - server

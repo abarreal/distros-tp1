@@ -123,6 +123,6 @@ func (b *Blockchain) openReadConnection() (net.Conn, error) {
 
 func (b *Blockchain) openWriteConnection() (net.Conn, error) {
 	serverName := config.GetStringOrDefault("BlockchainServerName", "localhost")
-	serverPort := config.GetStringOrDefault("BlockchainReadPort", "8010")
+	serverPort := config.GetStringOrDefault("BlockchainWritePort", "8010")
 	return net.Dial("tcp", fmt.Sprintf("%s:%s", serverName, serverPort))
 }

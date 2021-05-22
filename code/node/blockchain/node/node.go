@@ -37,9 +37,10 @@ func Run() {
 	// Instantiate read and write server configuration.
 	logging.Log("Reading server configuration")
 	rServerPort, _ := config.GetIntOrDefault("ReadServerPort", 8000)
+	rWorkerCount, _ := config.GetIntOrDefault("ReaderCount", 4)
 	rServerConfig := &server.ServerConfig{
 		Port:        uint16(rServerPort),
-		WorkerCount: 4,
+		WorkerCount: uint(rWorkerCount),
 	}
 	wServerPort, _ := config.GetIntOrDefault("WriteServerPort", 8010)
 	wServerConfig := &server.ServerConfig{
