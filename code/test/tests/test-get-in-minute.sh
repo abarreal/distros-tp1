@@ -1,7 +1,5 @@
 #!/bin/sh
 
-UNIX_TIMESTAMP=$1
+echo "Requesting blocks in minute $5 of hour $4 on day $3 of month $2 of year $1 UTC"
 
-echo "Requesting blocks in minute that contains time $UNIX_TIMESTAMP"
-
-/node minute $UNIX_TIMESTAMP
+/node minute $1 $2 $3 $4 $5

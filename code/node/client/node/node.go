@@ -98,8 +98,18 @@ func handleBlockRequest() {
 }
 
 func handleBlocksInMinuteRequest() {
+	// Get year, month, day, hour and minute as arguments.
+	yearStr, monthStr, dayStr, hourStr, minuteStr :=
+		os.Args[2], os.Args[3], os.Args[4], os.Args[5], os.Args[6]
+
+	// Get datetime from minute.
+	layout := "2006-01-02T15:04:05"
+	datetime, _ := time.Parse(layout, fmt.Sprintf("%s-%s-%sT%s:%s:00",
+		yearStr, monthStr, dayStr, hourStr, minuteStr))
+
 	// Get the UNIX timestamp from the first argument.
-	requestDatetime, timestampInt, err := parseTimestamp(os.Args[2])
+	timestampUnixString := fmt.Sprintf("%d", datetime.Unix())
+	requestDatetime, timestampInt, err := parseTimestamp(timestampUnixString)
 
 	if err != nil {
 		logging.LogError("Could not parse timestamp", err)
