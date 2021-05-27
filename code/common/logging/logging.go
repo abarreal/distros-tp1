@@ -1,6 +1,9 @@
 package logging
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 var logtag string = ""
 
@@ -10,7 +13,7 @@ func Initialize(tag string) {
 
 func Log(msg string) {
 	message := fmt.Sprintf("[%s] %s", logtag, msg)
-	fmt.Println(message)
+	log.Println(message)
 }
 
 func LogError(msg string, err error) {

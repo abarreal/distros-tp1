@@ -240,7 +240,7 @@ func handleBlocksInMinuteRequest(readerId int, timestampString string) []*blockc
 	}
 
 	// Instantiate a query request.
-	minuteString := requestDatetime.Format("2006-01-02 15:04")
+	minuteString := requestDatetime.Local().Format("2006-01-02 15:04")
 	request := message.CreateReadBlocksInMinute(timestampInt)
 
 	logging.Log(fmt.Sprintf("[Reader %d] Sending query for blocks in minute: %s", readerId, minuteString))
@@ -252,8 +252,8 @@ func handleBlocksInMinuteRequest(readerId int, timestampString string) []*blockc
 	} else {
 		r := response.(*message.ReadBlocksInMinuteResponse)
 		// Notify the amount of blocks found.
-		minuteString := time.Unix(r.Timestamp(), 0)
-		logging.Log(fmt.Sprintf("[Reader %d] Found %d blocks for minute %s", readerId, r.BlockCount(), minuteString))
+		minuteTime := time.Unix(r.Timestamp(), 0).Local()
+		logging.Log(fmt.Sprintf("[Reader %d] Found %d blocks for minute %s", readerId, r.BlockCount(), minuteTime))
 		// Iterate through blocks and write content.
 		blocks := r.Blocks()
 
