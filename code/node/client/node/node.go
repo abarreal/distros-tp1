@@ -133,6 +133,14 @@ func handleBlocksInMinuteRequest() {
 	}
 }
 
+func parseTimestamp(unixTimestamp string) (time.Time, int64, error) {
+	if timestampInt, err := strconv.ParseInt(unixTimestamp, 10, 64); err != nil {
+		return time.Now(), 0, err
+	} else {
+		return time.Unix(timestampInt, 0), timestampInt, err
+	}
+}
+
 func handleGetMiningStats() {
 	// Instantiate the request.
 	request := message.CreateGetMiningStatistics()
@@ -149,14 +157,6 @@ func handleGetMiningStats() {
 			logging.Log(fmt.Sprintf("Blocks mined successfully: %d", stat.MiningSuccessCount))
 			logging.Log(fmt.Sprintf("Failed mining attempts: %d", stat.MiningFailureCount))
 		}
-	}
-}
-
-func parseTimestamp(unixTimestamp string) (time.Time, int64, error) {
-	if timestampInt, err := strconv.ParseInt(unixTimestamp, 10, 64); err != nil {
-		return time.Now(), 0, err
-	} else {
-		return time.Unix(timestampInt, 0), timestampInt, err
 	}
 }
 

@@ -26,6 +26,20 @@ services:
     volumes:
       - ./config/service:/etc/distros/config:ro
 
+  autoclient:
+    container_name: autoclient
+    image: tp1node:latest
+    entrypoint: /node autoclient
+    environment:
+      - WriterCount=4
+      - ReaderCount=4
+    depends_on:
+      - service
+    networks:
+      - testing_net
+    volumes:
+      - ./config/autoclient:/etc/distros/config:ro
+
 networks:
   testing_net:
     name: testing_net
